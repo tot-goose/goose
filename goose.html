@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тот ещё Гусь</title>
+<style>
+  :root {
+    --gold: #b8860b;
+    --gold-light: #d4a017;
+    --gold-dark: #6b5010;
+    --cream: #f5f0e0;
+    --bg: #f2ece0;
+    --brown: #4a3208;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Georgia', serif;
+  }
+  #bgCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+  }
+  .logo-container {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    pointer-events: none;
+  }
+  .text-main {
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: var(--brown);
+    text-transform: uppercase;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  .text-sub {
+    font-size: 14px;
+    letter-spacing: 8px;
+    color: var(--gold-dark);
+    text-transform: uppercase;
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  .text-main.show { animation: textSlideUp 1s ease-out forwards; }
+  .text-sub.show { animation: textSlideUp 1s ease-out 0.4s forwards; }
+  @keyframes textSlideUp { to { opacity: 1; transform: translateY(0); } }
+  .restart-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 10;
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 8px 20px;
+    font-family: 'Georgia', serif;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+  }
+  .restart-btn.visible { opacity: 1; pointer-events: auto; }
+  .restart-btn:hover { background: var(--gold); color: var(--bg); }
+  @media (max-width: 480px) {
+    .text-main { font-size: 22px; letter-spacing: 3px; }
+    .text-sub { font-size: 10px; letter-spacing: 4px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+
+
+
+
+<script>
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+const BG_COLOR = '#f2ece0';
+let W, H, cx, cy, baseR;
+let startTime = null;
+let animId;
+let gooseImg = null;
+let imgLoaded = false;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2 - 10;
+  baseR = Math.min(W, H) * 0.28;
+  baseR = Math.max(80, baseR);
+}
+resize();
+window.addEventListener('resize', resize);
+
+/* === Загрузка картинки — БЕЗ crossOrigin, чтобы сервер не блокировал === */
+function tryLoadImage() {
+  const img = new Image();
+  let settled = false;
+
+  function settle(success) {
+    if (settled) return;
+    settled = true;
+    if (success) {
+      gooseImg = img;
+      imgLoaded = true;
+    }
+    startAnimation();
+  }
+
+  img.onload = () => settle(true);
+  img.onerror = () => settle(false);
+
+  /* Жёсткий таймаут 4 секунды */
+  setTimeout(() => settle(false), 4000);
+
+  img.src = 'https://img.totgoose.ru/goose.png';
+}
+tryLoadImage();
+
+function startAnimation() {
+  startTime = Date.now();
+  canvas.style.opacity = 0;
+  setTimeout(() => {
+    document.getElementById('textMain').classList.add('show');
+    document.getElementById('textSub').classList.add('show');
+  }, 2800);
+  setTimeout(() => {
+    document.getElementById('restartBtn').classList.add('visible');
+  }, 3500);
+  if (animId) cancelAnimationFrame(animId);
+  animate();
+}
+
+/* === Частицы (золотая пыль) === */
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    const angle = Math.random() * Math.PI * 2;
+    const r = baseR * 0.3 + Math.random() * baseR * 1.3;
+    this.x = cx + Math.cos(angle) * r;
+    this.y = cy + Math.sin(angle) * r;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = -0.2 - Math.random() * 0.6;
+    this.life = 1;
+    this.decay = 0.004 + Math.random() * 0.007;
+    this.size = 1 + Math.random() * 2.2;
+    this.hue = 35 + Math.random() * 20;
+    this.lightness = 40 + Math.random() * 20;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life -= this.decay;
+    if (this.life <= 0) this.reset();
+  }
+  draw(c) {
+    c.save();
+    c.globalAlpha = this.life * 0.6;
+    c.fillStyle = `hsl(${this.hue}, 75%, ${this.lightness}%)`;
+    c.shadowColor = `hsl(${this.hue}, 85%, ${this.lightness + 15}%)`;
+    c.shadowBlur = 6;
+    c.beginPath();
+    c.arc(this.x, this.y, Math.max(0.5, this.size * this.life), 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+}
+const particles = [];
+for (let i = 0; i < 70; i++) {
+  const p = new Particle();
+  p.life = Math.random();
+  particles.push(p);
+}
+
+/* === Лучи (мягкие, на светлом фоне) === */
+function drawRays(elapsed) {
+  const rayCount = 60;
+  const innerR = baseR * 0.5;
+  const maxLen = baseR * 1.6;
+  const rayPhase = elapsed * 0.0002;
+  ctx.save();
+  for (let i = 0; i < rayCount; i++) {
+    const angle = (i / rayCount) * Math.PI * 2 + rayPhase;
+    const flicker = 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(elapsed * 0.0015 + i * 1.5));
+    const len = innerR + maxLen * flicker;
+    const grad = ctx.createLinearGradient(
+      cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR,
+      cx + Math.cos(angle) * len, cy + Math.sin(angle) * len
+    );
+    grad.addColorStop(0, `rgba(184,134,11,${0.18 * flicker})`);
+    grad.addColorStop(0.5, `rgba(212,160,23,${0.06 * flicker})`);
+    grad.addColorStop(1, 'rgba(212,160,23,0)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.5 + flicker * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
+    ctx.lineTo(cx + Math.cos(angle) * len, cy + Math.sin(angle) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* === Тёплое свечение === */
+function drawGlow(elapsed) {
+  const pulse = 0.75 + 0.25 * Math.sin(elapsed * 0.0012);
+  const r = baseR * 1.3 * pulse;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(212,160,23,0.18)');
+  grad.addColorStop(0.4, 'rgba(212,160,23,0.06)');
+  grad.addColorStop(1, 'rgba(212,160,23,0)');
+  ctx.save();
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* === Кольцо (тёмное золото на светлом фоне) === */
+function drawRing(elapsed, progress) {
+  if (progress <= 0) return;
+  const r = baseR;
+  ctx.save();
+  ctx.globalAlpha = progress;
+
+  /* Внешнее кольцо */
+  ctx.strokeStyle = '#8b6914';
+  ctx.lineWidth = 4;
+  ctx.shadowColor = 'rgba(139,105,20,0.3)';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  /* Внутреннее кольцо */
+  ctx.shadowBlur = 10;
+  ctx.strokeStyle = '#6b5010';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 9, 0, Math.PI * 2);
+  ctx.stroke();
+
+  /* Точки */
+  ctx.shadowBlur = 3;
+  ctx.shadowColor = 'rgba(184,134,11,0.4)';
+  ctx.fillStyle = '#8b6914';
+  for (let i = 0; i < 40; i++) {
+    const a = (i / 40) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * (r - 4.5), cy + Math.sin(a) * (r - 4.5), 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* Дуги-маски (цвет фона, не чёрный!) */
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = BG_COLOR;
+  ctx.strokeStyle = '#6b5010';
+  ctx.lineWidth = 1.5;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 2, -Math.PI * 0.82, -Math.PI * 0.18);
+  ctx.lineTo(cx + Math.cos(-Math.PI * 0.18) * (r - 9), cy + Math.sin(-Math.PI * 0.18) * (r - 9));
+  ctx.arc(cx, cy, r - 9, -Math.PI * 0.18, -Math.PI * 0.82, true);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 2, Math.PI * 0.18, Math.PI * 0.82);
+  ctx.lineTo(cx + Math.cos(Math.PI * 0.82) * (r - 9), cy + Math.sin(Math.PI * 0.82) * (r - 9));
+  ctx.arc(cx, cy, r - 9, Math.PI * 0.82, Math.PI * 0.18, true);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  /* Вращающийся блик */
+  ctx.globalCompositeOperation = 'screen';
+  const sa = elapsed * 0.0008;
+  const sg = ctx.createRadialGradient(
+    cx + Math.cos(sa) * r * 0.7, cy + Math.sin(sa) * r * 0.7, 0,
+    cx + Math.cos(sa) * r * 0.7, cy + Math.sin(sa) * r * 0.7, r * 0.35
+  );
+  sg.addColorStop(0, 'rgba(255,220,120,0.2)');
+  sg.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = sg;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* === Движение гуся (как лев в MGM) === */
+function getGooseMotion(elapsed) {
+  /* Комбинируем несколько синусоид для живого движения */
+  const t = elapsed * 0.001;
+
+  /* Покачивание головы влево-вправо (основное MGM-движение) */
+  const swayX = Math.sin(t * 0.7) * baseR * 0.03
+              + Math.sin(t * 1.3) * baseR * 0.012;
+
+  /* Лёгкий наклон вверх-вниз (дыхание) */
+  const swayY = Math.sin(t * 0.5) * baseR * 0.015;
+
+  /* Небольшой поворот (наклон головы) */
+  const tilt = Math.sin(t * 0.6) * 0.03
+             + Math.sin(t * 1.1) * 0.015;
+
+  /* Пульсация масштаба (живое дыхание) */
+  const scale = 1.0 + Math.sin(t * 0.8) * 0.012;
+
+  return { swayX, swayY, tilt, scale };
+}
+
+/* === Рисование гуся (из картинки ИЛИ программно) === */
+function drawGoose(elapsed, progress) {
+  if (progress <= 0) return;
+  const p = Math.min(1, progress);
+
+  /* Эффект проявления из света */
+  const brightPhase = p < 0.5 ? (p / 0.5) : 1;
+  const brightness = brightPhase < 1 ? 1 + (4 - 1) * (1 - brightPhase) : 1.0;
+
+  /* Движение появляется после проявления */
+  const motionFade = p > 0.6 ? Math.min(1, (p - 0.6) / 0.4) : 0;
+  const motion = getGooseMotion(elapsed);
+  const mx = motion.swayX * motionFade;
+  const my = motion.swayY * motionFade;
+  const mr = motion.tilt * motionFade;
+  const ms = 1 + (motion.scale - 1) * motionFade;
+
+  ctx.save();
+  ctx.globalAlpha = p;
+
+  /* Клип — круг */
+  ctx.beginPath();
+  ctx.arc(cx, cy, baseR - 13, 0, Math.PI * 2);
+  ctx.clip();
+
+  /* Фон внутри круга */
+  ctx.fillStyle = '#ece6d4';
+  ctx.fillRect(cx - baseR, cy - baseR, baseR * 2, baseR * 2);
+
+  /* Применяем движение */
+  ctx.translate(cx + mx, cy + my);
+  ctx.rotate(mr);
+  ctx.scale(ms, ms);
+  ctx.translate(-cx, -cy);
+
+  if (imgLoaded && gooseImg) {
+    /* Рисуем загруженное изображение */
+    const imgR = baseR - 15;
+    const scaleF = Math.max(gooseImg.width, gooseImg.height) / (imgR * 2);
+    const drawW = gooseImg.width / scaleF;
+    const drawH = gooseImg.height / scaleF;
+    ctx.filter = `brightness(${brightness}) contrast(${brightness > 1.3 ? 0.6 : 1})`;
+    ctx.drawImage(gooseImg, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+    ctx.filter = 'none';
+  } else {
+    /* Программный гусь */
+    ctx.filter = `brightness(${brightness}) contrast(${brightness > 1.3 ? 0.65 : 1})`;
+    drawFallbackGoose();
+    ctx.filter = 'none';
+  }
+
+  /* Виньетка */
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // сброс трансформов для виньетки
+  const vig = ctx.createRadialGradient(cx, cy, baseR * 0.25, cx, cy, baseR - 10);
+  vig.addColorStop(0, 'rgba(242,236,224,0)');
+  vig.addColorStop(0.6, 'rgba(242,236,224,0.05)');
+  vig.addColorStop(1, 'rgba(242,236,224,0.85)');
+  ctx.fillStyle = vig;
+  ctx.beginPath();
+  ctx.arc(cx, cy, baseR - 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* === Программный гусь (запасной) === */
+function drawFallbackGoose() {
+  const s = baseR / 180;
+  ctx.save();
+  ctx.translate(cx, cy + 20 * s);
+
+  /* Тело */
+  const bg = ctx.createRadialGradient(0, 10 * s, 5 * s, 0, 10 * s, 70 * s);
+  bg.addColorStop(0, '#faf6ec');
+  bg.addColorStop(0.6, '#ede5d0');
+  bg.addColorStop(1, '#d8ce b4');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.ellipse(0, 15 * s, 55 * s, 65 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#fffbf0';
+  ctx.beginPath();
+  ctx.ellipse(-15 * s, 0, 35 * s, 45 * s, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Шея */
+  ctx.fillStyle = '#f0ead8';
+  ctx.beginPath();
+  ctx.moveTo(-30 * s, -30 * s);
+  ctx.quadraticCurveTo(-55 * s, -70 * s, -45 * s, -105 * s);
+  ctx.quadraticCurveTo(-35 * s, -115 * s, -25 * s, -105 * s);
+  ctx.quadraticCurveTo(-20 * s, -70 * s, -10 * s, -30 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  /* Голова */
+  ctx.fillStyle = '#fffbf0';
+  ctx.beginPath();
+  ctx.ellipse(-35 * s, -108 * s, 20 * s, 18 * s, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Клюв */
+  ctx.fillStyle = '#e8841a';
+  ctx.beginPath();
+  ctx.moveTo(-52 * s, -112 * s);
+  ctx.lineTo(-70 * s, -108 * s);
+  ctx.lineTo(-52 * s, -102 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#c06a10';
+  ctx.beginPath();
+  ctx.ellipse(-58 * s, -108 * s, 2 * s, 1.2 * s, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Глаз */
+  ctx.fillStyle = '#1a1408';
+  ctx.beginPath();
+  ctx.ellipse(-42 * s, -113 * s, 4.5 * s, 5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(-40 * s, -115 * s, 1.8 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Бровь */
+  ctx.strokeStyle = '#8a7e60';
+  ctx.lineWidth = 2.5 * s;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-50 * s, -120 * s);
+  ctx.quadraticCurveTo(-42 * s, -124 * s, -33 * s, -121 * s);
+  ctx.stroke();
+
+  /* Щека */
+  ctx.fillStyle = 'rgba(220,160,140,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(-48 * s, -104 * s, 7 * s, 5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Шляпа */
+  ctx.fillStyle = '#1a1612';
+  ctx.beginPath();
+  ctx.moveTo(-52 * s, -125 * s);
+  ctx.lineTo(-48 * s, -170 * s);
+  ctx.lineTo(-22 * s, -170 * s);
+  ctx.lineTo(-18 * s, -125 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(-35 * s, -125 * s, 35 * s, 7 * s, -0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#222018';
+  ctx.beginPath();
+  ctx.ellipse(-35 * s, -170 * s, 14 * s, 4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c41e1e';
+  ctx.fillRect(-50 * s, -132 * s, 30 * s, 5 * s);
+
+  /* Бабочка */
+  ctx.fillStyle = '#c41e1e';
+  ctx.beginPath();
+  ctx.moveTo(-35 * s, -88 * s);
+  ctx.quadraticCurveTo(-55 * s, -82 * s, -55 * s, -75 * s);
+  ctx.quadraticCurveTo(-55 * s, -68 * s, -35 * s, -72 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-35 * s, -88 * s);
+  ctx.quadraticCurveTo(-15 * s, -82 * s, -15 * s, -75 * s);
+  ctx.quadraticCurveTo(-15 * s, -68 * s, -35 * s, -72 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#a01818';
+  ctx.beginPath();
+  ctx.ellipse(-35 * s, -80 * s, 4 * s, 5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* Крыло */
+  ctx.fillStyle = '#e8e2d0';
+  ctx.beginPath();
+  ctx.moveTo(15 * s, -20 * s);
+  ctx.quadraticCurveTo(55 * s, -10 * s, 50 * s, 30 * s);
+  ctx.quadraticCurveTo(45 * s, 55 * s, 20 * s, 45 * s);
+  ctx.quadraticCurveTo(10 * s, 20 * s, 15 * s, -20 * s);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc5b0';
+  ctx.lineWidth = 1 * s;
+  for (let i = 0; i < 5; i++) {
+    const py = -10 * s + i * 12 * s;
+    ctx.beginPath();
+    ctx.moveTo(20 * s, py);
+    ctx.quadraticCurveTo(38 * s, py + 5 * s, 46 * s, py + 8 * s);
+    ctx.stroke();
+  }
+
+  /* Хвост */
+  ctx.fillStyle = '#ddd8c4';
+  ctx.beginPath();
+  ctx.moveTo(20 * s, 60 * s);
+  ctx.quadraticCurveTo(50 * s, 40 * s, 60 * s, 55 * s);
+  ctx.quadraticCurveTo(55 * s, 65 * s, 45 * s, 70 * s);
+  ctx.quadraticCurveTo(35 * s, 72 * s, 20 * s, 70 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* === Утилиты === */
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function getProgress(elapsed, startMs, durMs) {
+  if (elapsed < startMs) return 0;
+  return easeOut(Math.min(1, (elapsed - startMs) / durMs));
+}
+
+/* === Ожидание загрузки === */
+function drawIdle() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = BG_COLOR;
+  ctx.fillRect(0, 0, W, H);
+  const t = Date.now() * 0.0005;
+  const pulse = 0.3 + 0.15 * Math.sin(t * 2);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 0.8);
+  grad.addColorStop(0, `rgba(184,134,11,${pulse * 0.1})`);
+  grad.addColorStop(1, 'rgba(184,134,11,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, baseR * 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  for (const p of particles) { p.update(); p.draw(ctx); }
+}
+
+/* === Главный цикл === */
+function animate() {
+  if (startTime === null) { drawIdle(); animId = requestAnimationFrame(animate); return; }
+
+  const elapsed = Date.now() - startTime;
+  ctx.clearRect(0, 0, W, H);
+
+  /* Светлый фон */
+  ctx.fillStyle = BG_COLOR;
+  ctx.fillRect(0, 0, W, H);
+
+  canvas.style.opacity = Math.min(1, elapsed / 1500);
+
+  drawGlow(elapsed);
+  drawRays(elapsed);
+  drawRing(elapsed, getProgress(elapsed, 200, 1800));
+  drawGoose(elapsed, getProgress(elapsed, 1600, 1600));
+
+  for (const p of particles) { p.update(); p.draw(ctx); }
+  animId = requestAnimationFrame(animate);
+}
+animate();
+
+/* === Перезапуск === */
+document.getElementById('restartBtn').addEventListener('click', () => {
+  cancelAnimationFrame(animId);
+  startTime = Date.now();
+  canvas.style.opacity = 0;
+  const tm = document.getElementById('textMain');
+  const ts = document.getElementById('textSub');
+  tm.classList.remove('show');
+  ts.classList.remove('show');
+  void tm.offsetWidth;
+  tm.classList.add('show');
+  ts.classList.add('show');
+  animate();
+});
+</script>
+</body>
+</html>
