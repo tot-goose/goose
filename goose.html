@@ -9,8 +9,8 @@
     --gold: #b8860b;
     --gold-light: #d4a017;
     --gold-dark: #6b5010;
-    --cream: #f5f0e0;
-    --bg: #f2ece0;
+    --cream: #fff;
+    --bg: #fff;
     --brown: #4a3208;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -104,7 +104,7 @@
 <script>
 const canvas = document.getElementById('bgCanvas');
 const ctx = canvas.getContext('2d');
-const BG_COLOR = '#f2ece0';
+const BG_COLOR = '#fff';
 let W, H, cx, cy, baseR;
 let startTime = null;
 let animId;
@@ -143,7 +143,7 @@ function tryLoadImage() {
   /* Жёсткий таймаут 4 секунды */
   setTimeout(() => settle(false), 4000);
 
-  img.src = 'https://img.totgoose.ru/goose.png';
+  img.src = 'https://img.totgoose.ru/goose_c.png';
 }
 tryLoadImage();
 
@@ -368,7 +368,7 @@ function drawGoose(elapsed, progress) {
   ctx.clip();
 
   /* Фон внутри круга */
-  ctx.fillStyle = '#ece6d4';
+  ctx.fillStyle = '#fff';
   ctx.fillRect(cx - baseR, cy - baseR, baseR * 2, baseR * 2);
 
   /* Применяем движение */
